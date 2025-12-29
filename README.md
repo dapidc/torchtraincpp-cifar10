@@ -1,4 +1,5 @@
 # torchtraincpp-cifar10
+![CI](https://github.com/dapidc/torchtraincpp-cifar10/actions/workflows/ci.yml/badge.svg)
 
 A **production-grade C++17 training pipeline** for **CIFAR-10** using **LibTorch**, designed to run **unchanged** on CPU (local development) and CUDA GPU (cloud or on-prem).
 

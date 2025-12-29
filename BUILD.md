@@ -210,6 +210,7 @@ Cause: loader cannot locate LibTorch shared libraries.
 Fix:
 - set `LD_LIBRARY_PATH` (see above), or embed RPATH
 
+This project embeds RPATH to locate LibTorch at runtime, avoiding reliance on LD_LIBRARY_PATH.
 ---
 
 ## Reproducibility Checklist

@@ -1,0 +1,85 @@
+name: ci
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build-and-smoke:
+    runs-on: ubuntu-latest
+    env:
+      LIBTORCH_VERSION: "2.9.1+cpu"
+      LIBTORCH_ZIP: "libtorch-shared-with-deps-2.9.1%2Bcpu.zip"
+      LIBTORCH_URL: "https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.9.1%2Bcpu.zip"
+      CIFAR10_URL: "https://www.cs.toronto.edu/~kriz/cifar-10-binary.tar.gz"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends             build-essential cmake ninja-build git curl unzip ca-certificates
+
+      - name: Cache LibTorch
+        id: cache-libtorch
+        uses: actions/cache@v4
+        with:
+          path: .deps/libtorch
+          key: libtorch-${{ env.LIBTORCH_VERSION }}-ubuntu-latest
+
+      - name: Download LibTorch (CPU)
+        if: steps.cache-libtorch.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p .deps
+          cd .deps
+          curl -L "${LIBTORCH_URL}" -o libtorch.zip
+          unzip -q libtorch.zip
+          rm -f libtorch.zip
+          test -d libtorch/include
+          test -d libtorch/lib
+          test -d libtorch/share/cmake/Torch
+
+      - name: Cache CIFAR-10
+        id: cache-cifar10
+        uses: actions/cache@v4
+        with:
+          path: data/cifar-10-batches-bin
+          key: cifar10-binary-v1
+
+      - name: Download CIFAR-10 (binary)
+        if: steps.cache-cifar10.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p data
+          cd data
+          curl -L "${CIFAR10_URL}" -o cifar-10-binary.tar.gz
+          tar -xzf cifar-10-binary.tar.gz
+          rm -f cifar-10-binary.tar.gz
+          test -f cifar-10-batches-bin/test_batch.bin
+
+      - name: Configure (Release)
+        run: |
+          cmake -S . -B build -G Ninja             -DCMAKE_BUILD_TYPE=Release             -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/.deps/libtorch"
+
+      - name: Build
+        run: |
+          cmake --build build
+
+      - name: Smoke run (1 epoch, CPU)
+        env:
+          LD_LIBRARY_PATH: "${{ github.workspace }}/.deps/libtorch/lib:${{ env.LD_LIBRARY_PATH }}"
+        run: |
+          ./build/torchtraincpp             --epochs 1             --batch 64             --lr 0.001             --data data             --out runs/ci             --log-every 500
+
+          test -f runs/ci/metrics.csv
+          head -n 3 runs/ci/metrics.csv
+
+      - name: Upload run artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-run-artifacts
+          path: |
+            runs/ci/metrics.csv
+            runs/ci/checkpoint_epoch_*.pt

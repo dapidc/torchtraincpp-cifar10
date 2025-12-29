@@ -1,12 +1,24 @@
 #include <torch/torch.h>
 #include <iostream>
 #include <filesystem>
+#include <string>
 
 #include "data/cifar10_dataset.h"
 #include "model/simple_cnn.h"
 #include "train/trainer.h"
 #include "util/csv_logger.h"
 #include "util/checkpoint.h"
+
+struct TrainConfig {
+  int epochs = 10;
+  int batch_size = 128;
+  double lr = 0.001;
+  bool use_cuda = false;
+  std::string data_dir = "data";
+  std::string out_dir = "runs/run";
+  std::string resume_from;
+  int log_every = 200;
+};
 
 static TrainConfig parse_args(int argc, char** argv) {
   TrainConfig c;
@@ -52,14 +64,18 @@ int main(int argc, char** argv) {
     auto train_ds = Cifar10Dataset(cfg.data_dir, true).map(torch::data::transforms::Stack<>());
     auto test_ds  = Cifar10Dataset(cfg.data_dir, false).map(torch::data::transforms::Stack<>());
 
-    auto train_loader = torch::data::make_data_loader(
-      std::move(train_ds),
-      torch::data::DataLoaderOptions().batch_size(cfg.batch_size).workers(2).shuffle(true)
-    );
-    auto test_loader = torch::data::make_data_loader(
-      std::move(test_ds),
-      torch::data::DataLoaderOptions().batch_size(cfg.batch_size).workers(2)
-    );
+    auto train_loader =
+      torch::data::make_data_loader<torch::data::samplers::RandomSampler>(
+        std::move(train_ds),
+        torch::data::DataLoaderOptions().batch_size(cfg.batch_size).workers(2)
+      );
+
+    auto test_loader =
+      torch::data::make_data_loader<torch::data::samplers::SequentialSampler>(
+        std::move(test_ds),
+        torch::data::DataLoaderOptions().batch_size(cfg.batch_size).workers(2)
+      );
+
 
     // Model
     SimpleCnn model;
@@ -83,7 +99,8 @@ int main(int argc, char** argv) {
 
     for (int epoch = start_epoch; epoch <= cfg.epochs; epoch++) {
       std::cout << "\nEpoch " << epoch << "/" << cfg.epochs << "\n";
-      auto tr = train_one_epoch(*model, *train_loader, opt, device, cfg.log_every);
+      auto tr = train_one_epoch(*model, *train_loader, device, opt, cfg.log_every);
+
       auto va = eval_one_epoch(*model, *test_loader, device);
 
       std::cout << "train loss=" << tr.loss << " acc=" << tr.acc

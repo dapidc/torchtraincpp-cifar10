@@ -65,3 +65,10 @@ rules.ninja
 *.a
 *.out
 *.exe
+
+# ---- Ignore checkpoints and metrics ----
+runs/
+
+# ---- Datasets (downloaded / external) ----
+data/
+!data/.gitkeep
